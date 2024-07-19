@@ -1,0 +1,77 @@
+{
+    "Dataset_date": "datetime.date",
+    "Territory_code": [
+        "str",
+        2
+    ],
+    "Track_asin": [
+        "str",
+        10
+    ],
+    "Track_isrc": [
+        "str",
+        12
+    ],
+    "Proprietery_track_id": [
+        "str",
+        12
+    ],
+    "Track_name": [
+        "str",
+        50
+    ],
+    "Track_artist": [
+        "str",
+        80
+    ],
+    "Album_asim": [
+        "str",
+        10
+    ],
+    "Digital_album_upc": "int",
+    "Album_name": [
+        "str",
+        100
+    ],
+    "Album_artist": [
+        "str",
+        100
+    ],
+    "Offline_plays": "int",
+    "Streams": "int",
+    "Timestamp": "datetime",
+    "Play_duration": "int",
+    "Subscription_plan": [
+        "str",
+        80
+    ],
+    "Device_type": [
+        "str",
+        20
+    ],
+    "Customer_id": [
+        "str",
+        100
+    ],
+    "Postal_code": "int",
+    "Stream_source": [
+        "str",
+        50
+    ],
+    "Stream_source_id": [
+        "str",
+        15
+    ],
+    "Stream_source_name": [
+        "str",
+        25
+    ],
+    "Track_quality": [
+        "str",
+        10
+    ],
+    "Asset_type": [
+        "str",
+        1
+    ]
+}

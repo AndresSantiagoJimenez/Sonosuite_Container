@@ -1,0 +1,10 @@
+# Archivos y carpetas que se deben ignorar al copiar al contenedor Docker
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+.DS_Store
+.env
+
