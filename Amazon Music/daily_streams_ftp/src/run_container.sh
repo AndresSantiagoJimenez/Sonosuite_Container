@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Print a message indicating the script is running
+echo "Ejecutando Codigo_ftp_Amazon.py"
+
+# Ejecuta el script Python
+python Codigo_ftp_Amazon.py
+
 # Check if the container tag is provided
 if [ $# -lt 1 ]; then
   echo "Usage: $0 container_tag [VAR1=value1] [VAR2=value2] ..."

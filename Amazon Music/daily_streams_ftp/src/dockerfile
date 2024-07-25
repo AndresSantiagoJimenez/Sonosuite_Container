@@ -4,20 +4,20 @@ FROM python:3.9-slim
 # Establece el directorio de trabajo en la raíz del contenedor
 WORKDIR /app
 
-# Copia el archivo requirements.txt y instala las dependencias
+# Copia el archivo requirements.txt
 COPY requirements.txt .
+
+# Instala las dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia todos los archivos locales al contenedor (asegúrate de tener un .dockerignore adecuado)
+# Copia todos los archivos locales del directorio src
 COPY . .
 
-# Define variables de entorno para las credenciales SFTP
-ENV SFTP_USERNAME=${SFTP_USERNAME}
-ENV SFTP_PASSWORD=${SFTP_PASSWORD}
+# Copia el script de inicio
+COPY run_container.sh /app/run_container.sh
 
-# Define variables de entorno para las credenciales de AWS
-# ENV AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-# ENV AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+# Dale permisos de ejecución al script
+RUN chmod +x /app/run_container.sh
 
 # Comando por defecto al iniciar el contenedor
-CMD ["python", "Codigo_ftp_Amazon.py"]
+CMD ["/app/run_container.sh"]
