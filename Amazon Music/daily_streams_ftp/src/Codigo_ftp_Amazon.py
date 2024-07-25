@@ -9,31 +9,90 @@ import zipfile
 from settings import settings  # Asegúrate de importar correctamente tus configuraciones
 
 # Configurar las credenciales de AWS desde variables de entorno
-aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+#aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+#aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
 # Configurar la sesión y el cliente de S3
-s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+#s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+s3 = boto3.client('s3')
 
 # Crear el directorio temporal si no existe
 if not os.path.exists(settings.directorio_temporal):
     os.makedirs(settings.directorio_temporal)
     logger.info(f"Creado el directorio temporal: {settings.directorio_temporal}")
 
+def obtener_estructura_sftp(sftp, directorio):
+    """
+    Obtiene la estructura de carpetas y subcarpetas en un directorio del servidor SFTP.
+
+    :param sftp: Instancia de `paramiko.SFTPClient` para conectar con el servidor SFTP.
+    :param directorio: Ruta del directorio en el servidor SFTP para obtener su estructura.
+    :return: Diccionario con la estructura del directorio.
+    """
+    estructura = {}
+    try:
+        items = sftp.listdir_attr(directorio)
+        for item in items:
+            item_path = os.path.join(directorio, item.filename).replace("\\", "/")
+            if sftp.stat(item_path).st_mode & 0o170000 == 0o040000:
+                estructura[item.filename] = obtener_estructura_sftp(sftp, item_path)
+    except IOError as e:
+        logger.error(f"Error al listar el directorio {directorio}: {e}")
+    return estructura
+
+def obtener_estructura_s3(bucket, prefix):
+    """
+    Obtiene la estructura de carpetas y subcarpetas en un bucket de S3.
+
+    :param bucket: Nombre del bucket en S3.
+    :param prefix: Prefijo para listar objetos en S3.
+    :return: Diccionario con la estructura del bucket.
+    """
+    estructura = {}
+    try:
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter='/')
+        for prefix in response.get('CommonPrefixes', []):
+            sub_prefix = prefix['Prefix']
+            sub_estructura = obtener_estructura_s3(bucket, sub_prefix)
+            estructura[os.path.basename(sub_prefix)] = sub_estructura
+    except ClientError as e:
+        logger.error(f"Error al listar objetos en S3: {e}")
+    return estructura
+
+def comparar_estructuras(estructura_sftp, estructura_s3):
+    """
+    Compara la estructura de carpetas y subcarpetas entre SFTP y S3.
+
+    :param estructura_sftp: Estructura de carpetas del servidor SFTP.
+    :param estructura_s3: Estructura de carpetas en S3.
+    :return: True si las estructuras coinciden, False en caso contrario.
+    """
+    if set(estructura_sftp.keys()) != set(estructura_s3.keys()):
+        return False
+    for carpeta in estructura_sftp.keys():
+        if carpeta not in estructura_s3:
+            return False
+        if not comparar_estructuras(estructura_sftp[carpeta], estructura_s3[carpeta]):
+            return False
+    return True
+
 def cargar_archivos_local(directorio):
+    """
+    Carga archivos locales desde el directorio especificado y los convierte en DataFrames de pandas.
+
+    :param directorio: Ruta del directorio que contiene los archivos.
+    :return: Lista de tuplas (DataFrame, nombre_archivo) para cada archivo cargado.
+    """
     try:
         if not os.path.exists(directorio):
             logger.error(f"El directorio no existe: {directorio}")
             return []
-
         logger.info(f"Buscando archivos en el directorio: {directorio}")
         archivos_ingesta = [os.path.join(directorio, f) for f in os.listdir(directorio) if f.endswith(('.json', '.csv', '.txt'))]
         logger.info(f"Archivos encontrados: {archivos_ingesta}")
-
         if not archivos_ingesta:
             logger.error("No se encontraron archivos en el directorio especificado.")
             return []
-
         dataframes = []
         for archivo in archivos_ingesta:
             try:
@@ -46,17 +105,23 @@ def cargar_archivos_local(directorio):
                     df = pd.read_csv(archivo, delimiter='\t')
                 dataframes.append((df, archivo))
             except PermissionError as pe:
-                logger.error(f"Permiso denegado al intentar leer el archivo {archivo}. Verifica los permisos: {pe}")
+                logger.error(f"Permiso denegado al intentar leer el archivo {archivo}: {pe}")
             except FileNotFoundError as fnf:
-                logger.error(f"Archivo no encontrado: {archivo}. Verifica la ruta: {fnf}")
+                logger.error(f"Archivo no encontrado: {archivo}: {fnf}")
             except Exception as e:
-                logger.error(f"Error al leer el archivo {archivo}: {e}. Saltando este archivo.")
+                logger.error(f"Error al leer el archivo {archivo}: {e}")
         return dataframes
     except Exception as e:
         logger.error(f"Error al buscar archivos en el directorio {directorio}: {e}")
         return []
 
 def transformar_datos(df):
+    """
+    Transforma los datos en el DataFrame, renombrando columnas a un formato estandarizado.
+
+    :param df: DataFrame a transformar.
+    :return: DataFrame transformado, o None en caso de error.
+    """
     try:
         df = df.rename(columns={
             'dataset date': 'Dataset_date',
@@ -84,33 +149,37 @@ def transformar_datos(df):
             'track quality': 'Track_quality',
             'asset type': 'Asset_type'
         })
-
         df = df.rename(columns=lambda x: x.upper())
         return df
     except Exception as e:
         logger.error(f"Error al transformar los datos: {e}")
         return None
 
-def comparar_estructuras_s3(df_local, bucket, key):
+def guardar_json_s3(df, bucket, key):
+    """
+    Guarda el DataFrame en formato JSON en un bucket de S3.
+
+    :param df: DataFrame a guardar.
+    :param bucket: Nombre del bucket en S3.
+    :param key: Clave del objeto en S3.
+    """
     try:
-        # Descargar el archivo JSON desde S3 para comparar estructuras
-        response = s3.get_object(Bucket=bucket, Key=key)
-        df_s3 = pd.read_json(response['Body'], orient='records')
-        
-        # Verificar que las columnas coincidan
-        if list(df_local.columns) != list(df_s3.columns):
-            logger.error(f"Estructura del archivo en S3 ({key}) no coincide con el archivo local.")
-            return False
-        
-        # Aquí podrías agregar más validaciones si es necesario (por ejemplo, tipos de datos)
-        
-        logger.info(f"Estructura validada en S3: {key}")
-        return True
+        json_data = df.to_json(orient='records', lines=True)
+        s3.put_object(Bucket=bucket, Key=key, Body=json_data)
+        logger.info(f"Archivo JSON guardado en S3: {key}")
+        if not validar_archivo_s3(bucket, key):
+            logger.error(f"El archivo en S3 no fue encontrado después de guardar: {key}")
     except Exception as e:
-        logger.error(f"Error al comparar estructuras con S3: {e}")
-        return False
+        logger.error(f"Error al guardar el archivo en S3: {e}")
 
 def validar_archivo_s3(bucket, key):
+    """
+    Valida la existencia de un archivo en S3.
+
+    :param bucket: Nombre del bucket en S3.
+    :param key: Clave del objeto en S3.
+    :return: True si el archivo existe, False en caso contrario.
+    """
     try:
         s3.head_object(Bucket=bucket, Key=key)
         logger.info(f"Archivo validado en S3: {key}")
@@ -126,98 +195,14 @@ def validar_archivo_s3(bucket, key):
         logger.error(f"Error inesperado al validar archivo en S3: {e}")
         return False
 
-def guardar_json_s3(df, bucket, key):
-    try:
-        json_buffer = StringIO()
-        df.to_json(json_buffer, orient='records')
-        
-        # Validar estructura antes de guardar en S3
-        if comparar_estructuras_s3(df, bucket, key):
-            s3.put_object(Bucket=bucket, Key=key, Body=json_buffer.getvalue().encode('utf-8'))
-            logger.info(f"Archivo JSON guardado en S3: {key}")
-            return validar_archivo_s3(bucket, key)
-        else:
-            logger.error(f"No se pudo validar la estructura del archivo en S3: {key}")
-            return False
-    except (NoCredentialsError, PartialCredentialsError, TokenRetrievalError) as e:
-        logger.error(f"Error de credenciales: {e}")
-    except Exception as e:
-        logger.error(f"Error al guardar en S3: {e}")
-        return False
-
-def descargar_archivos_sftp(directorio_remoto, directorio_destino):
-    transport = None
-    sftp = None
-    try:
-        transport = paramiko.Transport((settings.sftp_host, settings.sftp_port))
-        transport.connect(username=os.getenv('SFTP_USERNAME'), password=os.getenv('SFTP_PASSWORD'))
-        sftp = paramiko.SFTPClient.from_transport(transport)
-        
-        def buscar_carpeta_daily(path):
-            logger.info(f"Buscando en: {path}")
-            try:
-                items = sftp.listdir(path)
-                for item in items:
-                    item_path = os.path.join(path, item).replace("\\", "/")
-                    if sftp.stat(item_path).st_mode & 0o170000 == 0o040000:  # Es una carpeta
-                        logger.info(f"Encontrada carpeta: {item_path}")
-                        if item.lower() == 'daily':
-                            return item_path
-                        else:
-                            daily_path = buscar_carpeta_daily(item_path)
-                            if daily_path:
-                                return daily_path
-            except IOError as e:
-                logger.error(f"Error al listar el directorio {path}: {e}")
-            return None
-        
-        def descargar_y_descomprimir_archivos_subcarpeta(path, subcarpeta, directorio_destino, carpeta_anterior):
-            try:
-                if sftp.stat(path).st_mode & 0o170000 == 0o040000:  # Es una carpeta
-                    daily_path = buscar_carpeta_daily(path)
-                    if daily_path:
-                        subcarpeta_path = os.path.join(daily_path, subcarpeta).replace("\\", "/")
-                        if sftp.stat(subcarpeta_path).st_mode & 0o170000 == 0o040000:  # Es una carpeta
-                            archivos = sftp.listdir(subcarpeta_path)
-                            for archivo in archivos:
-                                if archivo.endswith('.zip'):
-                                    archivo_remoto = os.path.join(subcarpeta_path, archivo).replace("\\", "/")
-                                    archivo_local = os.path.join(directorio_destino, carpeta_anterior, subcarpeta, archivo)
-                                    if not os.path.exists(os.path.dirname(archivo_local)):
-                                        os.makedirs(os.path.dirname(archivo_local))
-                                    sftp.get(archivo_remoto, archivo_local)
-                                    logger.info(f'Descargado: {archivo} desde {archivo_remoto} a {archivo_local}')
-                                    
-                                    # Descomprimir el archivo zip
-                                    try:
-                                        with zipfile.ZipFile(archivo_local, 'r') as zip_ref:
-                                            zip_ref.extractall(os.path.dirname(archivo_local))
-                                            logger.info(f'Descomprimido: {archivo}')
-                                            os.remove(archivo_local)
-                                            logger.info(f'Eliminado archivo zip: {archivo}')
-                                    except zipfile.BadZipFile:
-                                        logger.error(f"Archivo zip corrupto: {archivo}")
-                                        
-                descargar_y_descomprimir_archivos_subcarpeta(directorio_remoto, 'ventas', directorio_destino, 'ventas')
-            except Exception as e:
-                logger.error(f"Error al descargar archivos SFTP: {e}")
-            finally:
-                if sftp:
-                    sftp.close()
-                if transport:
-                    transport.close()
-
-    except Exception as e:
-        logger.error(f"Error al establecer conexión SFTP: {e}")
-    finally:
-        if sftp:
-            sftp.close()
-        if transport:
-            transport.close()
-
 def limpiar_carpeta_data():
+    """
+    Elimina todos los archivos en el directorio de datos temporal.
+
+    :return: None
+    """
     try:
-        directorio_data = 'src/Data'  # Reemplaza 'src/Data' con la carpeta Data correcta
+        directorio_data = settings.directorio_temporal
         for archivo in os.listdir(directorio_data):
             archivo_path = os.path.join(directorio_data, archivo)
             if os.path.isfile(archivo_path):
@@ -227,32 +212,116 @@ def limpiar_carpeta_data():
     except Exception as e:
         logger.error(f"Error al eliminar archivos en la carpeta Data: {e}")
 
-def procesar_archivos():
+def buscar_carpeta_daily(sftp, path):
+    """
+    Busca y retorna la ruta a la subcarpeta 'Daily' dentro del directorio especificado en el servidor SFTP.
+
+    :param sftp: Instancia de `paramiko.SFTPClient` para conectar con el servidor SFTP.
+    :param path: Ruta del directorio en el servidor SFTP.
+    :return: Ruta a la subcarpeta 'Daily' si existe, None en caso contrario.
+    """
     try:
-        # Descargar archivos desde SFTP
-        descargar_archivos_sftp(settings.directorio_temporal, settings.directorio_local)
+        for item in sftp.listdir_attr(path):
+            item_path = os.path.join(path, item.filename).replace("\\", "/")
+            if item.filename == 'Daily' and sftp.stat(item_path).st_mode & 0o170000 == 0o040000:
+                return item_path
+        logger.error(f"No se encontró la subcarpeta 'Daily' en el directorio: {path}")
+        return None
+    except IOError as e:
+        logger.error(f"Error al buscar la subcarpeta 'Daily' en el directorio {path}: {e}")
+        return None
+
+def descargar_y_descomprimir_archivos_subcarpeta(sftp, ruta_directorio, directorio_destino):
+    """
+    Busca la subcarpeta 'Daily', descarga y descomprime archivos ZIP desde el servidor SFTP, guardándolos en un directorio local.
+
+    :param sftp: Instancia de `paramiko.SFTPClient` para conectar con el servidor SFTP.
+    :param ruta_directorio: Ruta del directorio en el servidor SFTP donde se buscará la subcarpeta 'Daily'.
+    :param directorio_destino: Directorio local donde se guardarán los archivos descomprimidos.
+    """
+    try:
+        # Buscar la subcarpeta 'Daily'
+        ruta_subcarpeta = buscar_carpeta_daily(sftp, ruta_directorio)
         
-        # Cargar archivos locales y procesarlos
-        dataframes = cargar_archivos_local(settings.directorio_local)
-        for df, archivo in dataframes:
-            df_transformado = transformar_datos(df)
-            if df_transformado is not None:
-                # Guardar datos transformados en S3
-                nombre_archivo_s3 = f"transformados/{os.path.basename(archivo)}"
-                guardado_correcto = guardar_json_s3(df_transformado, settings.bucket_salida, nombre_archivo_s3)
-                if guardado_correcto:
-                    logger.info(f"Datos transformados guardados correctamente en S3: {nombre_archivo_s3}")
-                else:
-                    logger.error(f"Error al guardar datos transformados en S3: {nombre_archivo_s3}")
-                    return  # Terminar la ejecución si hay un error en la carga a S3
+        if not ruta_subcarpeta:
+            logger.error(f"No se pudo encontrar la subcarpeta 'Daily' en {ruta_directorio}.")
+            return
+        
+        # Descargar y descomprimir archivos ZIP en la subcarpeta 'Daily'
+        archivos = sftp.listdir(ruta_subcarpeta)
+        logger.info(f"Archivos encontrados en la subcarpeta 'Daily': {archivos}")
+        
+        for archivo in archivos:
+            archivo_path = os.path.join(ruta_subcarpeta, archivo).replace("\\", "/")
+            if archivo.lower().endswith('.zip'):
+                archivo_local = os.path.join(directorio_destino, archivo)
+                sftp.get(archivo_path, archivo_local)
+                logger.info(f"Archivo ZIP descargado: {archivo_local}")
+                with zipfile.ZipFile(archivo_local, 'r') as zip_file:
+                    zip_file.extractall(directorio_destino)
+                    logger.info(f"Archivo descomprimido en {directorio_destino}")
+    except IOError as e:
+        logger.error(f"Error al descargar o descomprimir archivos: {e}")
 
-        logger.info("Proceso completado exitosamente.")
+def descargar_y_procesar_archivos_sftp():
+    """
+    Descarga y procesa archivos desde el servidor SFTP, valida la estructura con S3 y guarda los datos transformados en S3.
+
+    :return: None
+    """
+    try:
+        sftp_host = settings.sftp_host
+        sftp_port = settings.sftp_port
+        sftp_username = os.getenv("SFTP_USERNAME")
+        sftp_password = os.getenv("SFTP_PASSWORD")
+        
+        # Establece la conexión con el servidor SFTP
+        transport = paramiko.Transport((sftp_host, sftp_port))
+        transport.connect(username=sftp_username, password=sftp_password)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        
+        logger.info("Conectado al servidor SFTP.")
+        
+        # Usa la ruta del directorio raíz del SFTP
+        sftp_raiz = settings.sftp_directorio_raiz
+        estructura_sftp = obtener_estructura_sftp(sftp, sftp_raiz)
+        
+        estructura_s3 = obtener_estructura_s3(settings.bucket_salida, 'sales/')
+        
+        if not comparar_estructuras(estructura_sftp, estructura_s3):
+            logger.info("Las estructuras no coinciden.")
+            
+            # Lista las subcarpetas en el directorio raíz del SFTP
+            subcarpetas = [f for f in sftp.listdir(sftp_raiz) if sftp.stat(os.path.join(sftp_raiz, f)).st_mode & 0o170000 == 0o040000]
+            
+            for subcarpeta in subcarpetas:
+                ruta_subcarpeta = os.path.join(sftp_raiz, subcarpeta).replace("\\", "/")
+                descargar_y_descomprimir_archivos_subcarpeta(sftp, ruta_subcarpeta, subcarpeta, settings.directorio_temporal)
+            
+            dataframes = cargar_archivos_local(settings.directorio_temporal)
+            
+            if dataframes:
+                for df, archivo in dataframes:
+                    df = transformar_datos(df)
+                    if df is not None:
+                        key = f"{os.path.basename(archivo)}.json"
+                        guardar_json_s3(df, settings.bucket_salida, key)
+            
+            limpiar_carpeta_data()
+        else:
+            logger.info("Las estructuras coinciden. No es necesario procesar los archivos.")
+        
+        sftp.close()
     except Exception as e:
-        logger.error(f"Error general en el procesamiento de archivos: {e}")
-    finally:
-        # Llamar a la función de limpieza después de completar el procesamiento
-        limpiar_carpeta_data()
-        logger.info("Finalizando ejecución del DAG.")
+        logger.error(f"Error en la función descargar_y_procesar_archivos_sftp: {e}")
 
-# Ejecutar la función principal
-procesar_archivos()
+def main():
+    """
+    Función principal que ejecuta el proceso de descarga y procesamiento de archivos desde el servidor SFTP.
+
+    :return: None
+    """
+    descargar_y_procesar_archivos_sftp()
+
+if __name__ == "__main__":
+    main()
