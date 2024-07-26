@@ -13,11 +13,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copia todos los archivos locales del directorio src
 COPY . .
 
-# Copia el script de inicio
-COPY run_container.sh /app/run_container.sh
-
-# Dale permisos de ejecución al script
-RUN chmod +x /app/run_container.sh
-
 # Comando por defecto al iniciar el contenedor
-CMD ["/app/run_container.sh"]
+CMD ["python", "Codigo_ftp_Amazon.py"]
