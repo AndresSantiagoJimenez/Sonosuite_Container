@@ -9,12 +9,12 @@ import zipfile
 from settings import settings  # Asegúrate de importar correctamente tus configuraciones
 
 # Configurar las credenciales de AWS desde variables de entorno
-#aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
-#aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
 
 # Configurar la sesión y el cliente de S3
-#s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
-s3 = boto3.client('s3')
+s3 = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key)
+#s3 = boto3.client('s3')
 
 # Crear el directorio temporal si no existe
 if not os.path.exists(settings.directorio_temporal):
@@ -32,7 +32,7 @@ def obtener_estructura_sftp(sftp, directorio):
         logger.info(f"Listando atributos en el directorio: {directorio}")
         for item in sftp.listdir_attr(directorio):
             item_path = os.path.join(directorio, item.filename).replace("\\", "/")
-            logger.info(f"Procesando: SFTP{item_path}")
+            #logger.info(f"Procesando: SFTP{item_path}")
             if sftp.stat(item_path).st_mode & 0o170000 == 0o040000:  # Es un directorio
                 logger.info(f"Directorio encontrado: {item_path}")
                 estructura[item.filename], daily_path = obtener_estructura_sftp(sftp, item_path)
@@ -330,8 +330,9 @@ def descargar_y_procesar_archivos_sftp():
         # Establecer conexión SFTP
         sftp_host = settings.sftp_host
         sftp_port = settings.sftp_port
-        sftp_username = os.getenv("SFTP_USERNAME")
-        sftp_password = os.getenv("SFTP_PASSWORD")
+        sftp_username = os.getenv('SFTP_USERNAME')
+        sftp_password = os.getenv('SFTP_PASSWORD')
+
         
         transport = paramiko.Transport((sftp_host, sftp_port))
         transport.connect(username=sftp_username, password=sftp_password)
