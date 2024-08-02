@@ -1,5 +1,6 @@
 
 bucket_salida = 'sns-amazonmusic-trends'  # Nombre del bucket de salida
+Prefix = 'src/sales'
 
 
 # Variables del servidor SFTP y del directorio temporal
