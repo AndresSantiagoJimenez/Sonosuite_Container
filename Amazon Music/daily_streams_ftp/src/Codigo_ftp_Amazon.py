@@ -28,29 +28,25 @@ def obtener_estructura_sftp(sftp, directorio):
     y busca la subcarpeta 'Daily'.
     """
     estructura = {}
-    daily_path = None
+    daily_path_sftp = None
     try:
-        #logger.info(f"Listando atributos en el directorio: {directorio}")
         for item in sftp.listdir_attr(directorio):
             item_path = os.path.join(directorio, item.filename).replace("\\", "/")
-            #logger.info(f"Procesando: SFTP{item_path}")
             if sftp.stat(item_path).st_mode & 0o170000 == 0o040000:  # Es un directorio
-                logger.info(f"Directorio encontrado: {item_path}")
-                estructura[item.filename], daily_path = obtener_estructura_sftp(sftp, item_path)
-                if daily_path:
-                    logger.info(f"Carpeta 'Daily' encontrada en: {daily_path}")
-            else:
-                estructura[item.filename] = None
+                sub_estructura, sub_daily_path_sftp = obtener_estructura_sftp(sftp, item_path)
+                estructura[item.filename] = sub_estructura
+                if sub_daily_path_sftp:
+                    daily_path_sftp = sub_daily_path_sftp
         
         # Buscar la carpeta 'Daily' en el directorio actual
-        daily_path = buscar_carpeta_daily(sftp, directorio)
-        if daily_path:
-            logger.info(f"Carpeta 'Daily' encontrada en: {daily_path}")
+        daily_path_sftp = buscar_carpeta_daily(sftp, directorio)
+        if daily_path_sftp:
+            logger.info(f"Carpeta 'Daily' encontrada en: {daily_path_sftp}")
 
-        logger.info(f"Estructura obtenida para {directorio}: {estructura}")
     except Exception as e:
         logger.error(f"Error al obtener la estructura del SFTP en {directorio}: {e}")
-    return estructura, daily_path
+    return estructura, daily_path_sftp
+
 
 
 def obtener_estructura_s3(bucket, prefix):
@@ -67,15 +63,20 @@ def obtener_estructura_s3(bucket, prefix):
     
     try:
         response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter='/')
-        for prefix in response.get('CommonPrefixes', []):
-            sub_prefix = prefix['Prefix']
-            sub_estructura, daily_path_sub_s3 = obtener_estructura_s3(bucket, sub_prefix)
-            estructura[os.path.basename(sub_prefix)] = sub_estructura
-            if daily_path_sub_s3:
-                daily_path_s3 = daily_path_sub_s3
+        common_prefixes = response.get('CommonPrefixes', [])
+
+        for sub_prefix_dict in common_prefixes:
+            sub_prefix = sub_prefix_dict['Prefix']
+            sub_estructura, sub_daily_path_s3 = obtener_estructura_s3(bucket, sub_prefix)
+
+            clave = os.path.basename(os.path.normpath(sub_prefix))
+            estructura[clave] = sub_estructura
+
+            if sub_daily_path_s3:
+                daily_path_s3 = sub_daily_path_s3
         
         # Buscar la carpeta 'Daily' en el prefijo actual de S3
-        if 'Daily/' in prefix:
+        if 'Daily/' in prefix and not daily_path_s3:
             daily_path_s3 = prefix
             logger.info(f"Carpeta 'Daily' encontrada en S3: {daily_path_s3}")
         
@@ -94,14 +95,28 @@ def comparar_estructuras(estructura_sftp, estructura_s3):
     :param estructura_s3: Estructura de carpetas en S3.
     :return: True si las estructuras coinciden, False en caso contrario.
     """
-    if set(estructura_sftp.keys()) != set(estructura_s3.keys()):
+    if not isinstance(estructura_sftp, dict) or not isinstance(estructura_s3, dict):
+        logger.error("Una de las estructuras no es un diccionario.")
         return False
+
+    if set(estructura_sftp.keys()) != set(estructura_s3.keys()):
+        logger.info("Las claves de las estructuras no coinciden.")
+        return False
+
     for carpeta in estructura_sftp.keys():
         if carpeta not in estructura_s3:
+            logger.info(f"La carpeta {carpeta} no está presente en la estructura S3.")
+            return False
+        if not isinstance(estructura_sftp[carpeta], dict) or not isinstance(estructura_s3[carpeta], dict):
+            logger.error(f"El contenido de la carpeta {carpeta} no coincide en tipos.")
             return False
         if not comparar_estructuras(estructura_sftp[carpeta], estructura_s3[carpeta]):
+            logger.info(f"Las subcarpetas dentro de {carpeta} no coinciden.")
             return False
+
     return True
+
+
 
 def cargar_archivos_local(directorio):
     """
@@ -344,6 +359,7 @@ def descargar_y_procesar_archivos_sftp():
         sftp_port = settings.sftp_port
         sftp_username = os.getenv('SFTP_USERNAME')
         sftp_password = os.getenv('SFTP_PASSWORD')
+        
 
         transport = paramiko.Transport((sftp_host, sftp_port))
         transport.connect(username=sftp_username, password=sftp_password)
@@ -351,21 +367,21 @@ def descargar_y_procesar_archivos_sftp():
         
         sftp = paramiko.SFTPClient.from_transport(transport)
         logger.info("Cliente SFTP inicializado.")
-        logger.info("Conexión SFTP establecida y cliente inicializado. Procediendo con la obtención de estructura.")
         
         # Obtener estructura del SFTP
         sftp_raiz = settings.sftp_directorio_raiz
-        estructura_sftp = obtener_estructura_sftp(sftp, sftp_raiz)
-        logger.info(f"Estructura SFTP obtenida: {estructura_sftp}")
-
+        estructura_sftp, daily_path_sftp = obtener_estructura_sftp(sftp, sftp_raiz)
+        logger.info(f"Estructura SFTP obtenida: {estructura_sftp}, Daily path {daily_path_sftp}")
+        
         # Obtener estructura de S3
         estructura_s3, daily_path_s3 = obtener_estructura_s3(settings.bucket_salida, settings.Prefix)
         logger.info(f"Estructura S3 obtenida: {estructura_s3}, Daily path: {daily_path_s3}")
-        
+
+        # Compara las estructuras (solo los diccionarios)
         if not comparar_estructuras(estructura_sftp, estructura_s3):
             logger.info("Las estructuras no coinciden.")
             
-            # Obtener subcarpetas y procesar archivos
+            # Procesar subcarpetas si las estructuras no coinciden
             subcarpetas = [f for f in sftp.listdir(sftp_raiz) if sftp.stat(os.path.join(sftp_raiz, f)).st_mode & 0o170000 == 0o040000]
             logger.info(f"Subcarpetas encontradas: {subcarpetas}")
             
@@ -394,7 +410,7 @@ def descargar_y_procesar_archivos_sftp():
             logger.info("Carpeta temporal limpia.")
         else:
             logger.info("Las estructuras coinciden. No es necesario procesar los archivos.")
-    
+        
     except paramiko.ssh_exception.SSHException as e:
         logger.error(f"Error de conexión SSH: {e}")
     except paramiko.sftp.SFTPError as e:
@@ -406,6 +422,7 @@ def descargar_y_procesar_archivos_sftp():
             sftp.close()
         if transport:
             transport.close()
+
 
 def main():
     """
