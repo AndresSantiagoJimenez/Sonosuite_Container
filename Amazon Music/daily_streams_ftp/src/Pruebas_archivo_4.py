@@ -61,6 +61,7 @@ def list_sftp_files(sftp_client, remote_path, base_dir="Daily"):
                     files.append(entry_path)
                 else:
                     logger.info(f"Archivo fuera de {base_dir}: {entry.filename}")
+        
         return files
     except Exception as e:
         logger.error(f"Error listando archivos en SFTP: {e}")
@@ -81,6 +82,7 @@ def compare_structures(s3_files, sftp_files):
             logger.info("Archivos presentes en SFTP pero faltantes en S3:")
             for item in sorted(missing_in_s3):
                 logger.info(item)
+                
         if missing_in_sftp:
             logger.info("Archivos presentes en S3 pero faltantes en SFTP:")
             for item in sorted(missing_in_sftp):
@@ -89,6 +91,9 @@ def compare_structures(s3_files, sftp_files):
         logger.info("Las estructuras son iguales.")
     # Devolver los conjuntos de archivos faltantes
     return missing_in_s3, missing_in_sftp
+
+
+
 
 def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, directorio_temporal, subcarpetas_encontradas, max_reintentos=3):
     """
@@ -114,13 +119,16 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
                     if any(patron in archivo for patron in patrones_a_omitir):
                         logger.info(f"Omitiendo el archivo: {archivo}")
                         continue
+                    
                     if carpeta in archivo and archivo.split('/')[-1] in missing_in_s3:
                         archivo_path = archivo.replace("\\", "/")
                         # Crear estructura de directorios en el directorio temporal
                         relative_path = os.path.relpath(os.path.dirname(archivo_path), '/cxp-reporting/ZQLUC/sales')
                         directorio_local = os.path.join(directorio_temporal, relative_path)
                         os.makedirs(directorio_local, exist_ok=True)
+                        
                         archivo_local = os.path.join(directorio_local, os.path.basename(archivo_path))
+
                         for intento in range(max_reintentos):
                             try:
                                 logger.info(f"Intentando descargar: {archivo_path}")
@@ -140,10 +148,12 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
                                 except zipfile.BadZipFile as e:
                                     logger.error(f"Error al descomprimir el archivo {archivo_local}: {e}")
                                     break  # Si hay un error en el ZIP, no reintentar"""
+
                                 # Eliminar el archivo ZIP después de descomprimir
                                 #os.remove(archivo_local)
                                 #logger.info(f"Archivo ZIP eliminado: {archivo_local}")
                                 #break  # Salir del bucle de reintento si se completa con éxito
+
                             except paramiko.SSHException as e:
                                 logger.error(f"Error de conexión SSH: {e}")
                                 if intento < max_reintentos - 1:
@@ -242,18 +252,22 @@ def procesar_y_guardar_localmente(archivo_txt):
         # Eliminar el archivo TXT original
         os.remove(archivo_txt)
         logger.info(f"Archivo TXT original eliminado: {archivo_txt}")
+
     except Exception as e:
         logger.error(f"Error al procesar el archivo {archivo_txt}: {e}")
-
+        
+        
 def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix, s3_existing_files):
     """
     Sube archivos desde un directorio local a un bucket de S3, conservando la estructura de directorios.
+
     :param directorio_local: Directorio raíz donde se encuentran los archivos a subir.
     :param bucket_name: Nombre del bucket S3.
     :param s3_prefix: Prefijo en S3 donde se subirán los archivos.
     :param s3_existing_files: Conjunto de archivos que ya existen en S3.
     """
     s3_client = boto3.client('s3')
+
     for root, dirs, files in os.walk(directorio_local):
         for archivo in files:
             if archivo.endswith(('.json', '.zip')):
@@ -262,6 +276,7 @@ def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix, s3_exis
                 # Generar la ruta de destino en S3 manteniendo la estructura de directorios
                 relative_path = os.path.relpath(archivo_local_path, directorio_local)
                 s3_path = posixpath.join(s3_prefix, relative_path.replace("\\", "/"))
+
                 if s3_path not in s3_existing_files:
                     try:
                         logger.info(f"Subiendo {archivo_local_path} a s3://{bucket_name}/{s3_path}")
@@ -274,6 +289,7 @@ def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix, s3_exis
 def limpiar_directorio_temporal(directorio):
     """
     Elimina todos los archivos y subcarpetas en el directorio temporal.
+    
     :param directorio: Ruta del directorio que se desea limpiar.
     """
     try:
@@ -293,45 +309,55 @@ def main():
         # Configuración de S3
         s3_bucket_name = settings.bucket_salida
         s3_prefix = settings.Prefix
+
         # Establecer conexión SFTP
         sftp_hostname = settings.sftp_host
         sftp_port = settings.sftp_port
         sftp_username = os.getenv('SFTP_USERNAME')
         sftp_password = os.getenv('SFTP_PASSWORD')
+
         # Asegurarse de que el directorio temporal exista
         asegurar_directorio(settings.directorio_temporal)
+
         # Establecer conexión con el servidor SFTP
         transport = paramiko.Transport((sftp_hostname, sftp_port))
         transport.connect(username=sftp_username, password=sftp_password)
         sftp = paramiko.SFTPClient.from_transport(transport)
+
         # Obtener listas de archivos
         s3_files = list_s3_files(s3_bucket_name, s3_prefix)
         logger.info(f"S3: Estructura: {s3_files}")
         sftp_files = list_sftp_files(sftp, settings.sftp_directorio_raiz)
         logger.info(f"FTP: Estructura: {sftp_files}")
+
         # Comparar estructuras
-        compare_structures(s3_files, sftp_files)
+        #compare_structures(s3_files, sftp_files)
+
         #Descargar y descomprimir archivos faltantes
-        subcarpetas_encontradas = {'Ad-Supported': True, 'Prime': False, 'Unlimited': True}
-        descargar_y_descomprimir_archivos_faltantes(
+        #subcarpetas_encontradas = {'Ad-Supported': True, 'Prime': False, 'Unlimited': True}
+        """descargar_y_descomprimir_archivos_faltantes(
             sftp, sftp_files, set(s3_files), settings.directorio_temporal, subcarpetas_encontradas
-        )
-        # Procesar y guardar localmente los archivos descomprimidos como JSON
-        for root, dirs, files in os.walk(settings.directorio_temporal):
+        )"""
+
+                # Procesar y guardar localmente los archivos descomprimidos como JSON
+        """for root, dirs, files in os.walk(settings.directorio_temporal):
             for archivo in files:
                 if archivo.endswith('.txt'):
                     archivo_path = os.path.join(root, archivo)
                     logger.info(f"Procesando archivo: {archivo_path}")
                     procesar_y_guardar_localmente(archivo_path)
                 else:
-                    logger.info(f"Omitiendo: {archivo} (No es un archivo .txt)")
+                    logger.info(f"Omitiendo: {archivo} (No es un archivo .txt)")"""
+
         # Subir solo los archivos faltantes a S3
-        upload_missing_files_to_s3(settings.directorio_temporal, settings.bucket_salida, settings.Prefix, set(s3_files))
+        #upload_missing_files_to_s3(settings.directorio_temporal, settings.bucket_salida, settings.Prefix, set(s3_files))
+        
         # Limpiar el directorio temporal después de subir los archivos a S3
         limpiar_directorio_temporal(settings.directorio_temporal)
         # Cerrar la conexión SFTP
         sftp.close()
         transport.close()
+
     except Exception as e:
         logger.error(f"Error durante la ejecución del proceso: {e}")
 
@@ -339,3 +365,109 @@ if __name__ == "__main__":
     # Configura el logger de loguru
     logger.add("logs/pruebas_archivos.log", rotation="10 MB", retention="10 days")
     main()
+
+
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+"""
+# pycode: Función principal que ejecuta el proceso de comparación de estructuras entre SFTP y S3.
+def main():
+    
+    Función principal que ejecuta el proceso de comparación de estructuras entre SFTP y S3.
+    
+    try:
+        # Configuración de S3
+        s3_bucket_name = settings.bucket_salida  # Asegúrate de que esto sea solo el nombre del bucket
+        s3_prefix = settings.Prefix  # El prefijo (si lo hay) debe estar separado
+
+        # Establecer conexión SFTP
+        sftp_hostname = settings.sftp_host
+        sftp_port = settings.sftp_port
+        sftp_username = os.getenv('SFTP_USERNAME')
+        sftp_password = os.getenv('SFTP_PASSWORD')
+
+        # Establecer conexión con el servidor SFTP
+        transport = paramiko.Transport((sftp_hostname, sftp_port))
+        transport.connect(username=sftp_username, password=sftp_password)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+
+        # Obtener listas de archivos
+        s3_files = list_s3_files(s3_bucket_name, s3_prefix)
+        logger.info(f"S3: Estructura: {s3_files}")
+        sftp_files = list_sftp_files(sftp, settings.sftp_directorio_raiz)
+        logger.info(f"FTP: Estructura: {sftp_files}")
+
+        # Comparar estructuras
+        compare_structures(s3_files, sftp_files)
+    except Exception as e:
+        logger.error(f"Error durante la ejecución del proceso: {e}")
+
+if __name__ == "__main__":
+    # Configura el logger de loguru
+    logger.add("logs/pruebas_archivos.log", rotation="10 MB", retention="10 days")
+    main()
+
+"""
+
+
+
+        
+"""        
+# Configuración de S3
+s3_bucket_name = ‘tu-bucket-s3’
+s3_prefix = ‘carpeta-a-comparar/’  # Opcional, si deseas comparar solo una subcarpeta
+# Configuración de SFTP
+sftp_hostname = ‘tu-servidor-sftp’
+sftp_username = ‘tu-usuario’
+sftp_password = ‘tu-contraseña’
+sftp_remote_path = ‘/ruta/en/el/servidor/’
+# Obtener listas de archivos
+s3_files = list_s3_files(s3_bucket_name, s3_prefix)
+sftp_client = paramiko.SSHClient()
+sftp_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+sftp_client.connect(sftp_hostname, username=sftp_username, password=sftp_password)
+sftp = sftp_client.open_sftp()
+sftp_files = list_sftp_files(sftp, sftp_remote_path)
+sftp.close()
+sftp_client.close()
+# Comparar estructuras
+compare_structures(s3_files, sftp_files)"""
+
+
+
+
+"""def compare_structures(s3_files, sftp_files):
+    s3_set = set(s3_files)
+    sftp_set = set(sftp_files)
+    missing_in_s3 = sftp_set - s3_set
+    missing_in_sftp = s3_set - sftp_set
+    if missing_in_s3 or missing_in_sftp:
+        print("Las estructuras no son iguales.")
+        if missing_in_s3:
+            print("Archivos/directorios faltantes en S3:")
+            for item in missing_in_s3:
+                print(item)
+        if missing_in_sftp:
+            print("Archivos/directorios faltantes en SFTP:")
+            for item in missing_in_sftp:
+                print(item)
+    else:
+        print("Las estructuras son iguales.")"""

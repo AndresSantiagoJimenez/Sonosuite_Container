@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "./Amazon Music/daily_streams_ftp/src/src"
+    ]
+}
