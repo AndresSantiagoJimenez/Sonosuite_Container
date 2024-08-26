@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Comando por defecto al iniciar el contenedor
-CMD ["python", "Codigo_ftp_Amazon.py"]
+CMD ["python", "main.py"]

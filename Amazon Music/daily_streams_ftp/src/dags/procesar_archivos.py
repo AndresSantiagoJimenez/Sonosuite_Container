@@ -5,7 +5,7 @@ import os
 
 # Ruta al archivo Python que contiene el código a ejecutar
 src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src')
-script_path = os.path.join(src_dir, 'Codigo_ftp_Amazon.py')
+script_path = os.path.join(src_dir, 'main.py')
 
 # Definir los argumentos del DAG
 default_args = {

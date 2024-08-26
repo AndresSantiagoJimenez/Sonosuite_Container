@@ -8,19 +8,25 @@ El proyecto está estructurado de la siguiente manera:
 
 Amazon_Innventa/
 │
-├── src/
-│   ├── Codigo_ftp_Amazon.py
-│   ├── settings/
-│   │   ├── settings.py
-│   │   └── Diccionario.json
-│   └── (otros archivos y carpetas dentro de src)
+├── config/
+│   ├── settings.py
+│   └── Diccionario.json        # Configuraciones del proyecto (ajustes, credenciales, rutas)
 │
+├── src/
+│   ├── s3_utils.py        # Funciones relacionadas con AWS S3
+│   ├── sftp_utils.py      # Funciones relacionadas con SFTP
+│   ├── file_transformer.py # Funciones para transformar y procesar archivos
+│   └── file_uploader.py   # Funciones para subir archivos a S3
+│
+├── logs/
+│   └── pruebas_archivos.log
 ├── docker-compose.yml
 ├── Dockerfile
 ├── requirements.txt
 └── .dockerignore
+└── main.py                # Script principal
 
-1. **src/**: Contiene el script principal 'Codigo_ftp_Amazon.py' para procesar archivos desde SFTP, la configuración en settings/, y otros archivos necesarios.
+1. **src/**: Contiene el script principal 'main.py' para procesar archivos desde SFTP, la configuración en settings/, y otros archivos necesarios.
 2. **docker-compose.yml**: Configuración para Docker Compose, usado para manejar múltiples contenedores Docker.
 3. **Dockerfile**: Archivo para construir la imagen Docker del proyecto.
 4. **requirements.txt**: Archivo de requisitos con las dependencias del proyecto.
