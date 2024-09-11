@@ -116,7 +116,7 @@ def main():
                     logger.info(f"Omitiendo: {archivo} (No es un archivo .txt)")
 
         # Subir solo los archivos faltantes a S3
-        upload_missing_files_to_s3(settings.DIRECTORIO_TEMPORAL, settings.BUCKET_NAME, settings.S3_PREFIX, set(s3_files))
+        upload_missing_files_to_s3(settings.DIRECTORIO_TEMPORAL, settings.BUCKET_NAME, settings.S3_PREFIX, settings.S3_PREFIX_RAW, set(s3_files))
 
         # Limpiar el directorio temporal después de subir los archivos a S3
         limpiar_directorio_temporal(settings.DIRECTORIO_TEMPORAL)
@@ -128,8 +128,7 @@ def main():
         logger.error(f"Error durante la ejecución del proceso: {e}")
 
 if __name__ == "__main__":
-    # Configura el logger de loguru
-    logger.add("logs/pruebas_archivos.log", rotation="10 MB", retention="10 days")
+
     main()
 
 
