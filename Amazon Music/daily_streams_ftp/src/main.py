@@ -5,7 +5,7 @@ from loguru import logger
 from src.s3_utils import list_s3_files, upload_missing_files_to_s3
 from src.sftp_utils import list_sftp_files
 from src.file_comparisons import compare_structures
-from src.file_transformer import procesar_y_guardar_localmente
+from src.file_transformer import procesar_y_guardar_en_s3
 from src.file_uploader import asegurar_directorio, limpiar_directorio_temporal
 
 
@@ -80,6 +80,9 @@ from config.settings import settings
 
 def main():
     try:
+        # Inicio del proceso
+        print("Iniciando el proceso...")
+        
         # Obtener listas de archivos en S3
         s3_files = list_s3_files(settings.BUCKET_NAME, settings.S3_PREFIX)
         logger.info(f"S3: Estructura: {s3_files}")
@@ -105,18 +108,29 @@ def main():
             sftp, sftp_files, set(s3_files), settings.DIRECTORIO_TEMPORAL, subcarpetas_encontradas
         )
 
-        # Procesar y guardar localmente los archivos descomprimidos como JSON
+        # Procesar y subir los archivos descomprimidos como JSON directamente a S3
         for root, dirs, files in os.walk(settings.DIRECTORIO_TEMPORAL):
             for archivo in files:
                 if archivo.endswith('.txt'):
                     archivo_path = os.path.join(root, archivo)
                     logger.info(f"Procesando archivo: {archivo_path}")
-                    procesar_y_guardar_localmente(archivo_path)
+                    # Llamar a la nueva función que sube los archivos directamente a S3
+                    procesar_y_guardar_en_s3(
+                        archivo_path,
+                        settings.BUCKET_NAME,
+                        settings.S3_PREFIX_RAW
+                    )
                 else:
                     logger.info(f"Omitiendo: {archivo} (No es un archivo .txt)")
 
         # Subir solo los archivos faltantes a S3
-        upload_missing_files_to_s3(settings.DIRECTORIO_TEMPORAL, settings.BUCKET_NAME, settings.S3_PREFIX, settings.S3_PREFIX_RAW, set(s3_files))
+        upload_missing_files_to_s3(
+            settings.DIRECTORIO_TEMPORAL, 
+            settings.BUCKET_NAME, 
+            settings.S3_PREFIX, 
+            #settings.S3_PREFIX_RAW, 
+            set(s3_files)
+        )
 
         # Limpiar el directorio temporal después de subir los archivos a S3
         limpiar_directorio_temporal(settings.DIRECTORIO_TEMPORAL)
@@ -124,11 +138,14 @@ def main():
         # Cerrar la conexión SFTP
         sftp.close()
         transport.close()
+
+        # Fin del proceso
+        logger.info("Proceso completado con éxito.")
+        print("Proceso completado con éxito.")
     except Exception as e:
         logger.error(f"Error durante la ejecución del proceso: {e}")
 
 if __name__ == "__main__":
-
     main()
 
 

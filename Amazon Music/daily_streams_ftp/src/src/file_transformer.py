@@ -1,7 +1,14 @@
 import pandas as pd
 import zipfile
 import os
+import boto3
 from loguru import logger
+from config.settings import settings
+from io import StringIO
+
+
+# Inicializar el cliente de S3
+s3_client = boto3.client('s3', aws_access_key_id=settings.AWS_ACCESS_KEY_ID, aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
 
 def transformar_datos(df):
     """
@@ -42,42 +49,58 @@ def transformar_datos(df):
         logger.error(f"Error al transformar los datos: {e}")
         return None
 
-def guardar_json_local(df, ruta_json):
+def guardar_json_s3(df, bucket, ruta_s3):
     """
-    Guarda el DataFrame en formato JSON en una ruta local.
+    Guarda el DataFrame en formato JSON directamente en un bucket de S3.
     :param df: DataFrame a guardar.
-    :param ruta_json: Ruta del archivo JSON donde se guardará el DataFrame.
+    :param bucket: Nombre del bucket de S3.
+    :param ruta_s3: Ruta del archivo JSON en el bucket de S3.
     """
     try:
+        # Convertir el DataFrame a JSON en formato de líneas
         json_data = df.to_json(orient='records', lines=True)
-        with open(ruta_json, 'w') as file:
-            file.write(json_data)
-        logger.info(f"Archivo JSON guardado localmente: {ruta_json}")
+        
+        # Convertir el JSON a un stream para subirlo a S3
+        json_buffer = StringIO(json_data)
+        
+        # Subir el archivo a S3
+        s3_client.put_object(Body=json_buffer.getvalue(), Bucket=bucket, Key=ruta_s3)
+        
+        #logger.info(f"Archivo JSON guardado en S3: {ruta_s3}")
     except Exception as e:
-        logger.error(f"Error al guardar el archivo JSON localmente: {e}")
+        logger.error(f"Error al guardar el archivo JSON en S3: {e}")
 
-def procesar_y_guardar_localmente(archivo_txt):
+def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base):
     """
-    Procesa un archivo TXT delimitado por tabulaciones, lo transforma y lo guarda como JSON localmente.
+    Procesa un archivo TXT delimitado por tabulaciones, lo transforma y lo sube como JSON a S3.
     Luego elimina el archivo TXT original.
+    
     :param archivo_txt: Ruta del archivo TXT a procesar.
+    :param bucket: Nombre del bucket de S3.
+    :param ruta_s3_base: Ruta base en el bucket de S3 donde se subirá el archivo JSON.
     """
     try:
         # Leer el archivo TXT
         df = pd.read_csv(archivo_txt, delimiter='\t')  # Asumiendo que los archivos son TSV
-        logger.info(f"Archivo TXT cargado: {archivo_txt}")
+        #logger.info(f"Archivo TXT cargado: {archivo_txt}")
+        
         # Transformar los datos
         df_transformado = transformar_datos(df)
         if df_transformado is None:
             logger.error(f"Error al transformar los datos para el archivo: {archivo_txt}")
             return
-        # Definir la ruta del archivo JSON
-        ruta_json = archivo_txt.replace('.txt', '.json')
-        # Guardar el DataFrame transformado localmente como JSON
-        guardar_json_local(df_transformado, ruta_json)
+        
+        # Definir la ruta del archivo JSON en S3
+        nombre_archivo_json = os.path.basename(archivo_txt).replace('.txt', '.json')
+        ruta_s3 = os.path.join(ruta_s3_base, nombre_archivo_json)
+        
+        # Subir el DataFrame transformado a S3 como JSON
+        guardar_json_s3(df_transformado, bucket, ruta_s3)
+        
         # Eliminar el archivo TXT original
         os.remove(archivo_txt)
-        logger.info(f"Archivo TXT original eliminado: {archivo_txt}")
+        #logger.info(f"Archivo TXT original eliminado: {archivo_txt}")
+        
     except Exception as e:
         logger.error(f"Error al procesar el archivo {archivo_txt}: {e}")
 
