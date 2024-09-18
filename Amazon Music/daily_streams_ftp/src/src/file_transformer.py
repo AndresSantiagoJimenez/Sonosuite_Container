@@ -70,7 +70,7 @@ def guardar_json_s3(df, bucket, ruta_s3):
     except Exception as e:
         logger.error(f"Error al guardar el archivo JSON en S3: {e}")
 
-def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base):
+def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base, ruta_local_base):
     """
     Procesa un archivo TXT delimitado por tabulaciones, lo transforma y lo sube como JSON a S3.
     Luego elimina el archivo TXT original.
@@ -78,11 +78,11 @@ def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base):
     :param archivo_txt: Ruta del archivo TXT a procesar.
     :param bucket: Nombre del bucket de S3.
     :param ruta_s3_base: Ruta base en el bucket de S3 donde se subirá el archivo JSON.
+    :param ruta_local_base: Ruta local base desde donde se están leyendo los archivos.
     """
     try:
         # Leer el archivo TXT
         df = pd.read_csv(archivo_txt, delimiter='\t')  # Asumiendo que los archivos son TSV
-        #logger.info(f"Archivo TXT cargado: {archivo_txt}")
         
         # Transformar los datos
         df_transformado = transformar_datos(df)
@@ -90,9 +90,12 @@ def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base):
             logger.error(f"Error al transformar los datos para el archivo: {archivo_txt}")
             return
         
-        # Definir la ruta del archivo JSON en S3
+        # Obtener la ruta relativa del archivo respecto a la carpeta local base
+        ruta_relativa = os.path.relpath(archivo_txt, ruta_local_base)
+        
+        # Definir la ruta del archivo JSON en S3 manteniendo la estructura de carpetas
         nombre_archivo_json = os.path.basename(archivo_txt).replace('.txt', '.json')
-        ruta_s3 = os.path.join(ruta_s3_base, nombre_archivo_json)
+        ruta_s3 = os.path.join(ruta_s3_base, os.path.dirname(ruta_relativa), nombre_archivo_json)
         
         # Subir el DataFrame transformado a S3 como JSON
         guardar_json_s3(df_transformado, bucket, ruta_s3)
@@ -103,4 +106,5 @@ def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base):
         
     except Exception as e:
         logger.error(f"Error al procesar el archivo {archivo_txt}: {e}")
+
 

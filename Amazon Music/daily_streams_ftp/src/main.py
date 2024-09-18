@@ -114,11 +114,13 @@ def main():
                 if archivo.endswith('.txt'):
                     archivo_path = os.path.join(root, archivo)
                     logger.info(f"Procesando archivo: {archivo_path}")
+                    
                     # Llamar a la nueva función que sube los archivos directamente a S3
                     procesar_y_guardar_en_s3(
                         archivo_path,
                         settings.BUCKET_NAME,
-                        settings.S3_PREFIX_RAW
+                        settings.S3_PREFIX_RAW,
+                        settings.DIRECTORIO_TEMPORAL  # Base local para obtener la ruta relativa
                     )
                 else:
                     logger.info(f"Omitiendo: {archivo} (No es un archivo .txt)")
@@ -127,10 +129,10 @@ def main():
         upload_missing_files_to_s3(
             settings.DIRECTORIO_TEMPORAL, 
             settings.BUCKET_NAME, 
-            settings.S3_PREFIX, 
-            #settings.S3_PREFIX_RAW, 
-            set(s3_files)
+            settings.S3_PREFIX,  # 'src/raw/' como prefijo en S3
+            set(s3_files)  # Archivos que ya existen en S3
         )
+
 
         # Limpiar el directorio temporal después de subir los archivos a S3
         limpiar_directorio_temporal(settings.DIRECTORIO_TEMPORAL)
@@ -141,7 +143,7 @@ def main():
 
         # Fin del proceso
         logger.info("Proceso completado con éxito.")
-        print("Proceso completado con éxito.")
+        #print("Proceso completado con éxito.")
     except Exception as e:
         logger.error(f"Error durante la ejecución del proceso: {e}")
 
