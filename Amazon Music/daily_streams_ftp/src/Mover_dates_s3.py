@@ -44,17 +44,18 @@ def mover_archivos_zip_a_raw(bucket_name, s3_prefix_sales, s3_prefix_raw):
                         Key=nuevo_s3_path
                     )
                     
-                    # Eliminar el archivo original de 'src/sales/' tras la copia exitosa
+                    # Eliminar el archivo original de 'src/raw/' tras la copia exitosa
                     s3.delete_object(Bucket=bucket_name, Key=archivo_s3)
-                    logger.info(f"Archivo original {archivo_s3} eliminado de 'src/sales/'.")
+                    logger.info(f"Archivo original {archivo_s3} eliminado de 'src/raw/'.")
     
     except Exception as e:
-        logger.error(f"Error al mover archivos .zip a 'src/raw/': {e}")
+        logger.error(f"Error al mover archivos .zip a 'raw/': {e}")
 
 # Parámetros
 bucket_name = 'sns-amazonmusic-trends'
-s3_prefix_sales = 'src/sales/'
-s3_prefix_raw = 'src/raw/'
+s3_prefix_sales = 'src/raw/'  # Origen correcto
+s3_prefix_raw = 'raw/'  # Destino correcto
 
 # Llamada a la función
 mover_archivos_zip_a_raw(bucket_name, s3_prefix_sales, s3_prefix_raw)
+

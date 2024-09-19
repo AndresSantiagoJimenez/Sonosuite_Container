@@ -24,7 +24,7 @@ class Settings:
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
     BUCKET_NAME = 'sns-amazonmusic-trends'  # Nombre del bucket de salida
-    S3_PREFIX = 'src/raw/'  # Prefijo en S3
+    S3_PREFIX = 'raw/'  # Prefijo en S3
     S3_PREFIX_RAW = 'src/sales/'  # Prefijo en S3 para raw
 
     # SFTP

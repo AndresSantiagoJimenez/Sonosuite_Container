@@ -8,37 +8,32 @@ from src.file_comparisons import compare_structures
 from src.file_transformer import procesar_y_guardar_en_s3
 from src.file_uploader import asegurar_directorio, limpiar_directorio_temporal
 
-
 def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, directorio_temporal, subcarpetas_encontradas, max_reintentos=3):
     """
     Descarga y descomprime archivos ZIP faltantes desde las subcarpetas especificadas en SFTP si no están en S3.
-    :param sftp: Instancia de `paramiko.SFTPClient`.
-    :param sftp_files: Lista de archivos en SFTP.
-    :param s3_files: Conjunto de archivos en S3.
-    :param directorio_temporal: Directorio local donde se descargarán y descomprimirán los archivos.
-    :param subcarpetas_encontradas: Diccionario indicando las subcarpetas a procesar (e.g., 'Ad-Supported': True).
-    :param max_reintentos: Número máximo de intentos de descarga en caso de falla.
     """
-    # Obtén los archivos que faltan en S3 utilizando la función compare_structures
     missing_in_s3, _ = compare_structures(s3_files, sftp_files)
-    # Lista de patrones de archivos a omitir
-    patrones_a_omitir = ['Summary_Statement']
+    patrones_a_omitir = ['Summary_Statement']  # Patrones a omitir
     try:
         for carpeta, procesar in subcarpetas_encontradas.items():
             if procesar:
                 logger.info(f"Procesando la subcarpeta: {carpeta}")
                 for archivo in sftp_files:
+                    # Extraer el nombre del archivo para verificar los patrones
+                    nombre_archivo = os.path.basename(archivo)
+
                     # Verificar si el archivo debe ser omitido
-                    if any(patron in archivo for patron in patrones_a_omitir):
-                        logger.info(f"Omitiendo el archivo: {archivo}")
+                    if any(patron in nombre_archivo for patron in patrones_a_omitir):
+                        logger.info(f"Omitiendo el archivo: {nombre_archivo}")
                         continue
-                    if carpeta in archivo and archivo.split('/')[-1] in missing_in_s3:
+
+                    if carpeta in archivo and nombre_archivo in missing_in_s3:
                         archivo_path = archivo.replace("\\", "/")
-                        # Crear estructura de directorios en el directorio temporal
                         relative_path = os.path.relpath(os.path.dirname(archivo_path), '/cxp-reporting/ZQLUC/sales')
                         directorio_local = os.path.join(directorio_temporal, relative_path)
                         os.makedirs(directorio_local, exist_ok=True)
-                        archivo_local = os.path.join(directorio_local, os.path.basename(archivo_path))
+                        archivo_local = os.path.join(directorio_local, nombre_archivo)
+
                         for intento in range(max_reintentos):
                             try:
                                 logger.info(f"Intentando descargar: {archivo_path}")
@@ -46,22 +41,20 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
                                 # Descargar el archivo desde SFTP
                                 sftp.get(archivo_path, archivo_local)
                                 logger.info(f"Archivo ZIP descargado: {archivo_local}")
-                                # Verificar si el archivo fue descargado correctamente
+
                                 if not os.path.exists(archivo_local):
                                     logger.error(f"El archivo no se encuentra en la ruta esperada: {archivo_local}")
                                     continue
-                                # Descomprimir el archivo ZIP en el directorio local
+
+                                # Descomprimir el archivo ZIP
                                 try:
                                     with zipfile.ZipFile(archivo_local, 'r') as zip_file:
                                         zip_file.extractall(directorio_local)
                                         logger.info(f"Archivo descomprimido en {directorio_local}")
                                 except zipfile.BadZipFile as e:
                                     logger.error(f"Error al descomprimir el archivo {archivo_local}: {e}")
-                                    break  # Si hay un error en el ZIP, no reintentar"""
-                                # Eliminar el archivo ZIP después de descomprimir
-                                #os.remove(archivo_local)
-                                #logger.info(f"Archivo ZIP eliminado: {archivo_local}")
-                                #break  # Salir del bucle de reintento si se completa con éxito
+                                    break  # No reintentar si hay un error en el archivo ZIP
+
                             except paramiko.SSHException as e:
                                 logger.error(f"Error de conexión SSH: {e}")
                                 if intento < max_reintentos - 1:
@@ -75,6 +68,7 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
                 logger.info(f"Saltando la subcarpeta: {carpeta}")
     except Exception as e:
         logger.error(f"Error al descargar y descomprimir archivos: {e}")
+
 
 from config.settings import settings
 
@@ -143,7 +137,7 @@ def main():
 
         # Fin del proceso
         logger.info("Proceso completado con éxito.")
-        #print("Proceso completado con éxito.")
+        #+print("Proceso completado con éxito.")
     except Exception as e:
         logger.error(f"Error durante la ejecución del proceso: {e}")
 
