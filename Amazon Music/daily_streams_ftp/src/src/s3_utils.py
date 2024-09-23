@@ -17,11 +17,11 @@ def list_s3_files(bucket_name, prefix):
 def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix_raw, s3_existing_files):
     s3_client = boto3.client('s3')
     
-    # Definir los sufijos y prefijos S3 en un solo lugar
+    # Definir los sufijos y prefijos S3
     extensions_prefixes = {
         '.zip': s3_prefix_raw
     }
-    
+
     # Recorrer los archivos del directorio local
     for root, _, files in os.walk(directorio_local):
         for archivo in files:
@@ -29,17 +29,17 @@ def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix_raw, s3_
             if ext in extensions_prefixes:
                 # Obtener la ruta local del archivo
                 archivo_local_path = os.path.join(root, archivo)
-                
-                # Obtener la ruta relativa del archivo respecto al directorio local
+
+                # Obtener la ruta relativa respecto al directorio local
                 relative_path = os.path.relpath(archivo_local_path, directorio_local).replace("\\", "/")
-                
-                # Definir la ruta en S3, respetando la estructura de carpetas
+
+                # Definir la ruta en S3
                 s3_path = posixpath.join(extensions_prefixes[ext], relative_path)
 
                 # Comprobar si el archivo ya existe en S3
                 if s3_path not in s3_existing_files:
                     try:
-                        #logger.info(f"Subiendo {archivo_local_path} a s3://{bucket_name}/{s3_path}")
+                        logger.info(f"Subiendo {archivo_local_path} a s3://{bucket_name}/{s3_path}")
                         # Subir el archivo a S3
                         s3_client.upload_file(archivo_local_path, bucket_name, s3_path)
                     except Exception as e:

@@ -1,3 +1,4 @@
+import posixpath
 import pandas as pd
 import zipfile
 import os
@@ -69,42 +70,38 @@ def guardar_json_s3(df, bucket, ruta_s3):
         #logger.info(f"Archivo JSON guardado en S3: {ruta_s3}")
     except Exception as e:
         logger.error(f"Error al guardar el archivo JSON en S3: {e}")
-
-def procesar_y_guardar_en_s3(archivo_txt, bucket, ruta_s3_base, ruta_local_base):
-    """
-    Procesa un archivo TXT delimitado por tabulaciones, lo transforma y lo sube como JSON a S3.
-    Luego elimina el archivo TXT original.
-    
-    :param archivo_txt: Ruta del archivo TXT a procesar.
-    :param bucket: Nombre del bucket de S3.
-    :param ruta_s3_base: Ruta base en el bucket de S3 donde se subirá el archivo JSON.
-    :param ruta_local_base: Ruta local base desde donde se están leyendo los archivos.
-    """
+        
+        
+def upload_and_transform_txt_files_to_s3(archivo_txt, bucket, s3_prefix_raw, ruta_local_base):
     try:
         # Leer el archivo TXT
-        df = pd.read_csv(archivo_txt, delimiter='\t')  # Asumiendo que los archivos son TSV
-        
+        df = pd.read_csv(archivo_txt, delimiter='\t')
+
         # Transformar los datos
         df_transformado = transformar_datos(df)
         if df_transformado is None:
             logger.error(f"Error al transformar los datos para el archivo: {archivo_txt}")
             return
-        
+
         # Obtener la ruta relativa del archivo respecto a la carpeta local base
-        ruta_relativa = os.path.relpath(archivo_txt, ruta_local_base)
-        
+        ruta_relativa = os.path.relpath(archivo_txt, ruta_local_base).replace("\\", "/")
+
         # Definir la ruta del archivo JSON en S3 manteniendo la estructura de carpetas
         nombre_archivo_json = os.path.basename(archivo_txt).replace('.txt', '.json')
-        ruta_s3 = os.path.join(ruta_s3_base, os.path.dirname(ruta_relativa), nombre_archivo_json)
-        
-        # Subir el DataFrame transformado a S3 como JSON
-        guardar_json_s3(df_transformado, bucket, ruta_s3)
-        
-        # Eliminar el archivo TXT original
-        os.remove(archivo_txt)
-        #logger.info(f"Archivo TXT original eliminado: {archivo_txt}")
-        
-    except Exception as e:
-        logger.error(f"Error al procesar el archivo {archivo_txt}: {e}")
+        ruta_s3 = posixpath.join(s3_prefix_raw, os.path.dirname(ruta_relativa), nombre_archivo_json)
 
+        # Subir el DataFrame transformado a S3 como JSON
+        s3 = boto3.client('s3', aws_access_key_id=settings.AWS_ACCESS_KEY_ID, aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
+        with open("/tmp/temp.json", 'w') as f:
+            df_transformado.to_json(f, orient='records')
+
+        logger.info(f"Subiendo {archivo_txt} como JSON a s3://{bucket}/{ruta_s3}")
+        s3.upload_file('/tmp/temp.json', bucket, ruta_s3)
+
+        # Eliminar el archivo TXT original si todo fue exitoso
+        os.remove(archivo_txt)
+        logger.info(f"Archivo TXT original eliminado: {archivo_txt}")
+
+    except Exception as e:
+        logger.error(f"Error procesando el archivo {archivo_txt}: {e}")
 

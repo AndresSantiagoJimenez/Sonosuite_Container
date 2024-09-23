@@ -1,30 +1,36 @@
+import os
 from loguru import logger
 
-def compare_structures(s3_files, sftp_files):
+def compare_structures(s3_files, sftp_files, sftp_base_path='/cxp-reporting/ZQLUC/sales'):
     """
-    Compara las estructuras de archivos entre S3 y SFTP y detecta diferencias.
+    Compara las estructuras de archivos entre S3 y SFTP y detecta archivos faltantes en S3.
+    Omite archivos cuyo nombre contenga "Summary_Statement".
+    
     :param s3_files: Lista de archivos en S3.
     :param sftp_files: Lista de archivos en SFTP.
-    :return: Conjuntos de archivos faltantes en S3 y SFTP.
+    :param sftp_base_path: Ruta base en SFTP para extraer la ruta relativa.
+    :return: Conjunto de archivos faltantes en S3.
     """
-    # Extraer solo los nombres de archivo sin considerar la ruta completa
-    s3_filenames = {file.split('/')[-1] for file in s3_files}
-    sftp_filenames = {file.split('/')[-1] for file in sftp_files}
-    # Archivos faltantes en cada sistema
-    missing_in_s3 = sftp_filenames - s3_filenames
-    missing_in_sftp = s3_filenames - sftp_filenames
-    # Si hay diferencias, se registran en el log
-    if missing_in_s3 or missing_in_sftp:
-        logger.info("Las estructuras no son iguales.")
-        if missing_in_s3:
-            logger.info("Archivos presentes en SFTP pero faltantes en S3:")
-            for item in sorted(missing_in_s3):
-                logger.info(item)
-        if missing_in_sftp:
-            logger.info("Archivos presentes en S3 pero faltantes en SFTP:")
-            for item in sorted(missing_in_sftp):
-                logger.info(item)
+    # Excluir archivos con "Summary_Statement" en el nombre
+    sftp_files_filtered = [file for file in sftp_files if "Summary_Statement" not in os.path.basename(file)]
+    
+    # Extraer las rutas relativas de los archivos en SFTP
+    sftp_relative_paths = {os.path.relpath(file, sftp_base_path).replace("\\", "/") for file in sftp_files_filtered}
+    logger.info(f"Rutas relativas en SFTP: {sftp_relative_paths}")
+
+    # Extraer los nombres de archivos de S3
+    s3_filenames = {os.path.basename(file) for file in s3_files}
+    logger.info(f"Archivos en S3: {s3_filenames}")
+
+    # Archivos que están en SFTP pero no en S3
+    missing_in_s3 = {file for file in sftp_relative_paths if os.path.basename(file) not in s3_filenames}
+
+    if missing_in_s3:
+        logger.info("Archivos presentes en SFTP pero faltantes en S3:")
+        for item in sorted(missing_in_s3):
+            logger.info(item)
     else:
-        logger.info("Las estructuras son iguales.")
-    # Devolver los conjuntos de archivos faltantes
-    return missing_in_s3, missing_in_sftp
+        logger.info("Todos los archivos en SFTP están presentes en S3.")
+
+    return missing_in_s3
+

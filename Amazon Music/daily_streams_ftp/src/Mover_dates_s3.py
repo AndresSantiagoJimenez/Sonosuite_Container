@@ -53,8 +53,8 @@ def mover_archivos_zip_a_raw(bucket_name, s3_prefix_sales, s3_prefix_raw):
 
 # Parámetros
 bucket_name = 'sns-amazonmusic-trends'
-s3_prefix_sales = 'src/raw/'  # Origen correcto
-s3_prefix_raw = 'raw/'  # Destino correcto
+s3_prefix_sales = 'src/sales/EU/Daily/Unlimited/'  # Origen correcto
+s3_prefix_raw = 'src/sales/ROE_EU'  # Destino correcto
 
 # Llamada a la función
 mover_archivos_zip_a_raw(bucket_name, s3_prefix_sales, s3_prefix_raw)
