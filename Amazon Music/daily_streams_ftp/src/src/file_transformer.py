@@ -50,28 +50,30 @@ def transformar_datos(df):
         logger.error(f"Error al transformar los datos: {e}")
         return None
 
-def guardar_json_s3(df, bucket, ruta_s3):
+def validar_y_eliminar_archivos_nivel_superior(bucket_name, prefix):
     """
-    Guarda el DataFrame en formato JSON directamente en un bucket de S3.
-    :param df: DataFrame a guardar.
-    :param bucket: Nombre del bucket de S3.
-    :param ruta_s3: Ruta del archivo JSON en el bucket de S3.
+    Elimina los archivos que están en el nivel del prefijo, sin afectar las subcarpetas.
+    
+    :param bucket_name: El nombre del bucket de S3.
+    :param prefix: El prefijo donde buscar archivos en el nivel superior.
     """
-    try:
-        # Convertir el DataFrame a JSON en formato de líneas
-        json_data = df.to_json(orient='records', lines=True)
+    # Listar todos los objetos dentro del prefijo
+    response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+    
+    if 'Contents' not in response:
+        print("No se encontraron archivos en el prefijo especificado.")
+        return
+
+    # Recorrer los objetos y eliminar los archivos que estén en el nivel superior
+    for obj in response['Contents']:
+        key = obj['Key']
         
-        # Convertir el JSON a un stream para subirlo a S3
-        json_buffer = StringIO(json_data)
-        
-        # Subir el archivo a S3
-        s3_client.put_object(Body=json_buffer.getvalue(), Bucket=bucket, Key=ruta_s3)
-        
-        #logger.info(f"Archivo JSON guardado en S3: {ruta_s3}")
-    except Exception as e:
-        logger.error(f"Error al guardar el archivo JSON en S3: {e}")
-        
-        
+        # Verificar si el objeto está en el nivel superior (sin entrar a las carpetas)
+        if '/' not in key[len(prefix):]:  # Si no hay más subniveles después del prefijo
+            print(f"Eliminando archivo en el nivel superior: {key}")
+            s3_client.delete_object(Bucket=bucket_name, Key=key)
+
+
 def upload_and_transform_txt_files_to_s3(archivo_txt, bucket, s3_prefix_raw, ruta_local_base):
     try:
         # Leer el archivo TXT
@@ -90,12 +92,25 @@ def upload_and_transform_txt_files_to_s3(archivo_txt, bucket, s3_prefix_raw, rut
         nombre_archivo_json = os.path.basename(archivo_txt).replace('.txt', '.json')
         ruta_s3 = posixpath.join(s3_prefix_raw, os.path.dirname(ruta_relativa), nombre_archivo_json)
 
-        # Subir el DataFrame transformado a S3 como JSON
+        # Inicializar el cliente S3
         s3 = boto3.client('s3', aws_access_key_id=settings.AWS_ACCESS_KEY_ID, aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
+
+        # Verificar si el archivo ya existe en S3
+        try:
+            s3.head_object(Bucket=bucket, Key=ruta_s3)
+            logger.info(f"El archivo ya existe en S3: s3://{bucket}/{ruta_s3}, no se subirá nuevamente.")
+            return  # Si el archivo ya existe, salir de la función
+        except s3.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                logger.info(f"El archivo no existe en S3, procediendo con la carga: {ruta_s3}")
+            else:
+                raise
+
+        # Subir el DataFrame transformado a S3 como JSON
         with open("/tmp/temp.json", 'w') as f:
             df_transformado.to_json(f, orient='records')
 
-        logger.info(f"Subiendo {archivo_txt} como JSON a s3://{bucket}/{ruta_s3}")
+        #logger.info(f"Subiendo {archivo_txt} como JSON a s3://{bucket}/{ruta_s3}")
         s3.upload_file('/tmp/temp.json', bucket, ruta_s3)
 
         # Eliminar el archivo TXT original si todo fue exitoso
@@ -104,4 +119,5 @@ def upload_and_transform_txt_files_to_s3(archivo_txt, bucket, s3_prefix_raw, rut
 
     except Exception as e:
         logger.error(f"Error procesando el archivo {archivo_txt}: {e}")
+
 

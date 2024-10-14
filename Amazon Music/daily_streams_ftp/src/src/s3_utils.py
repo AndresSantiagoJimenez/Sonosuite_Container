@@ -15,7 +15,10 @@ def list_s3_files(bucket_name, prefix):
     return files
 
 def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix_raw, s3_existing_files):
-    s3_client = boto3.client('s3')
+    s3_client = boto3.client('s3', aws_access_key_id=settings.AWS_ACCESS_KEY_ID, aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY)
+    
+    # Convertir s3_existing_files a set para mejorar la eficiencia
+    s3_existing_files_set = set(s3_existing_files)
     
     # Definir los sufijos y prefijos S3
     extensions_prefixes = {
@@ -25,6 +28,11 @@ def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix_raw, s3_
     # Recorrer los archivos del directorio local
     for root, _, files in os.walk(directorio_local):
         for archivo in files:
+            # Ignorar archivos que contengan "Summary_Statement" o tengan la extensión ".csv"
+            if "Summary_Statement" in archivo or archivo.endswith('.csv'):
+                logger.info(f"Ignorando archivo {archivo}")
+                continue  # Saltar este archivo y continuar con el siguiente
+            
             ext = os.path.splitext(archivo)[1]
             if ext in extensions_prefixes:
                 # Obtener la ruta local del archivo
@@ -37,7 +45,7 @@ def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix_raw, s3_
                 s3_path = posixpath.join(extensions_prefixes[ext], relative_path)
 
                 # Comprobar si el archivo ya existe en S3
-                if s3_path not in s3_existing_files:
+                if s3_path not in s3_existing_files_set:
                     try:
                         logger.info(f"Subiendo {archivo_local_path} a s3://{bucket_name}/{s3_path}")
                         # Subir el archivo a S3
@@ -46,3 +54,4 @@ def upload_missing_files_to_s3(directorio_local, bucket_name, s3_prefix_raw, s3_
                         logger.error(f"Error subiendo {archivo_local_path} a S3: {e}")
                 else:
                     logger.info(f"El archivo {s3_path} ya existe en S3, omitiendo.")
+

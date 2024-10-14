@@ -6,7 +6,7 @@ from loguru import logger
 from src.s3_utils import list_s3_files, upload_missing_files_to_s3
 from src.sftp_utils import list_sftp_files
 from src.file_comparisons import compare_structures
-from src.file_transformer import upload_and_transform_txt_files_to_s3
+from src.file_transformer import upload_and_transform_txt_files_to_s3, validar_y_eliminar_archivos_nivel_superior
 from src.file_uploader import asegurar_directorio, limpiar_directorio_temporal
 from src.sftp_downloader import descargar_y_descomprimir_archivos_faltantes
 from config.settings import settings
@@ -59,6 +59,15 @@ def main():
         #        logger.info(f"Archivos encontrados en {root}: {files}")
         #    else:
         #        logger.info(f"No se encontraron archivos en {root}")
+        
+        # Subir archivos faltantes a S3
+        upload_missing_files_to_s3(
+            settings.DIRECTORIO_TEMPORAL, 
+            settings.BUCKET_NAME_AMAZON_FTP, 
+            settings.S3_PREFIX_AMAZON_FTP,  
+            set(s3_files)
+        )
+        logger.info("Archivos subidos a S3 correctamente")
 
 # Procesar y subir archivos .txt a S3
         for root, dirs, files in os.walk(settings.DIRECTORIO_TEMPORAL):
@@ -78,15 +87,8 @@ def main():
                     )
                 else:
                     logger.info(f"Omitiendo archivo no .txt: {archivo}")
-
-        # Subir archivos faltantes a S3
-        upload_missing_files_to_s3(
-            settings.DIRECTORIO_TEMPORAL, 
-            settings.BUCKET_NAME, 
-            settings.S3_PREFIX,  
-            set(s3_files)
-        )
-        logger.info("Archivos subidos a S3 correctamente")
+                    
+        validar_y_eliminar_archivos_nivel_superior(settings.BUCKET_NAME_AMAZON_FTP, settings.S3_PREFIX_AMAZON_FTP)
 
         # Limpiar el directorio temporal después de subir los archivos a S3
         limpiar_directorio_temporal(settings.DIRECTORIO_TEMPORAL)

@@ -12,7 +12,7 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
 
     for subcarpeta, encontrada in subcarpetas_encontradas.items():
         if encontrada:
-            logger.info(f"Procesando la subcarpeta: {subcarpeta}")
+            #logger.info(f"Procesando la subcarpeta: {subcarpeta}")
 
             # Filtrar archivos de la subcarpeta que faltan en S3, omitiendo "Summary_Statement"
             archivos_para_descargar = [
@@ -22,7 +22,7 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
                 and os.path.relpath(archivo, sftp_base_path).replace("\\", "/") in missing_in_s3
             ]
 
-            logger.info(f"Archivos para descargar en la subcarpeta {subcarpeta}: {archivos_para_descargar}")
+            #logger.info(f"Archivos para descargar en la subcarpeta {subcarpeta}: {archivos_para_descargar}")
 
             for archivo in archivos_para_descargar:
                 archivo_sin_extension = os.path.basename(archivo).replace('.zip', '')
@@ -67,24 +67,24 @@ def descargar_y_descomprimir_archivos_faltantes(sftp, sftp_files, s3_files, dire
 
                 try:
                     # Descargar el archivo ZIP desde el servidor SFTP
-                    logger.info(f"Descargando archivo: {archivo}")
+                    #logger.info(f"Descargando archivo: {archivo}")
                     sftp.get(archivo, archivo_zip_local)
                     logger.info(f"Archivo descargado: {archivo_zip_local}")
 
                     # Descomprimir el archivo
                     with zipfile.ZipFile(archivo_zip_local, 'r') as zip_ref:
                         zip_ref.extractall(ruta_local)
-                        logger.info(f"Archivo ZIP {archivo_zip_local} descomprimido en {ruta_local}")
+                        #logger.info(f"Archivo ZIP {archivo_zip_local} descomprimido en {ruta_local}")
 
                         # Listar y verificar los archivos extraídos
                         archivos_descomprimidos = zip_ref.namelist()
                         for archivo in archivos_descomprimidos:
-                            logger.info(f"Archivo descomprimido: {archivo}")
+                            #logger.info(f"Archivo descomprimido: {archivo}")
 
                             # Verificar si es un archivo .txt
                             if archivo.endswith('.txt'):
                                 archivo_txt_local = os.path.join(ruta_local, os.path.basename(archivo).replace('.txt', ''))  # Remover .txt
-                                logger.info(f"Archivo .txt descomprimido: {archivo_txt_local}")
+                                #logger.info(f"Archivo .txt descomprimido: {archivo_txt_local}")
                                 archivos_descargados.append((archivo_zip_local, archivo_txt_local))
 
                 except Exception as e:

@@ -26,6 +26,8 @@ class Settings:
     BUCKET_NAME = 'sns-amazonmusic-trends'  # Nombre del bucket de salida
     S3_PREFIX = 'raw/'  # Prefijo en S3
     S3_PREFIX_RAW = 'src/sales/'  # Prefijo en S3 para raw
+    BUCKET_NAME_AMAZON_FTP = 'sns-dataplatform-landing-zone'
+    S3_PREFIX_AMAZON_FTP = 'dsps/amazon-music/ftp/sales/'
 
     # SFTP
     SFTP_HOST = 'prod.reporting.amazonmusiccatalog.com'
